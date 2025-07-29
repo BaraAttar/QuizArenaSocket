@@ -38,11 +38,11 @@ io.on("connection", (client) => {
   });
 
   client.on("message", ({ room, text }) => {
-    io.to(room).emit("message", {
-      text,
-      sender: socket.user.id,
-    });
+  io.to(room).emit("message", {
+    text,
+    sender: client.user.id, 
   });
+});
  
   client.on("leaveRoom", (roomName) => {
     client.leave(roomName);
