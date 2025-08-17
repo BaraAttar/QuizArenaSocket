@@ -1,0 +1,90 @@
+# Socket.IO API Reference
+
+This document outlines the Socket.IO events used for communication between the client (front-end) and the server (back-end).
+
+## 1. Connection and Authentication
+
+### `connect` (Client -> Server)
+
+Establishes a new connection to the Socket.IO server.
+
+*   **Authentication:** A valid JWT must be provided in the `token` field of the `auth` object during connection.
+    ```javascript
+    const socket = io("http://localhost:8080", {
+      auth: {
+        token: "YOUR_JWT_TOKEN"
+      },
+      query: {
+        roomID: "YOUR_ROOM_ID"
+      }
+    });
+    ```
+*   **Query Parameters:**
+    *   `roomID` (string, required): The ID of the room to join.
+
+## 2. Room Management
+
+### `joined-room` (Server -> Client)
+
+Confirms that the client has successfully joined a room.
+
+*   **Payload:**
+    *   `status` (number): The HTTP status code (e.g., 200).
+    *   `userId` (string): The user's ID.
+    *   `message` (string): A confirmation message.
+
+### `user-joined` (Server -> Client)
+
+Notifies all clients in a room that a new user has joined.
+
+*   **Payload:**
+    *   `message` (string): A message indicating which user joined.
+
+### `user-left` (Server -> Client)
+
+Notifies all clients in a room that a user has left.
+
+*   **Payload:**
+    *   `userID` (string): The ID of the user who left.
+    *   `message` (string): A message indicating which user left.
+
+### `room-full` (Server -> Client)
+
+Informs a client that the room they are trying to join is full.
+
+*   **Payload:**
+    *   `status` (number): The HTTP status code (e.g., 403).
+    *   `message` (string): An error message.
+
+### `disconnect` (Client -> Server)
+
+Triggered when a client disconnects from the server. The server will automatically handle notifying other users in the room.
+
+## 3. Quiz Gameplay
+
+### `start-quiz` (Server -> Client)
+
+Signals the beginning of the quiz for all users in the room.
+
+*   **Payload:**
+    *   `roomID` (string): The ID of the room where the quiz is starting.
+    *   `totalRounds` (number): The total number of questions in the quiz.
+
+### `start-round` (Server -> Client)
+
+Sends a new question and round information to all clients in the room.
+
+*   **Payload:**
+    *   `round` (number): The current round number.
+    *   `question` (object): The question object, containing the question text and choices.
+
+### `answer` (Client -> Server)
+
+Submits a player's answer for the current round.
+
+*   **Payload:**
+    *   `data`: The selected answer for the current question.
+
+### `quiz-finished` (Server -> Client)
+
+Announces that the quiz has ended.
