@@ -15,15 +15,23 @@ const httpServer = http.createServer();
 
 const io = new Server(httpServer, {
   cors: {
-    origin: [
-      "https://admin.socket.io",
-      "https://cd284f31033b.ngrok-free.app",
-      "http://localhost:3000",
-      "http://localhost:3000/private/room/123",
-      "http://localhost:8080", // إضافة مهمة للـ polling
-      /^https:\/\/.*\.ngrok\.io$/, // السماح لجميع عناوين ngrok
-      /^https:\/\/.*\.ngrok-free\.app$/, // السماح لجميع عناوين ngrok الجديدة
-    ],
+    origin: (origin, callback) => {
+      const allowed = [
+        "http://localhost:3000",
+        /\.vercel\.app$/, // أي دومين من Vercel
+      ];
+
+      if (!origin) return callback(null, true); // للسيرفر-سيرفر
+      if (
+        allowed.some((rule) =>
+          rule instanceof RegExp ? rule.test(origin) : rule === origin
+        )
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true, // مهم للـ Admin UI
   },
