@@ -1,76 +1,83 @@
 // roomHandler.js
-
 const { startQuiz } = require("./quiz/startQuiz");
-const roomQuizCache = require('./quiz/quizCache');
+const roomCache = new Map(); // أو استبدل بـ roomCache إذا لديك ملف خارجي
 
-module.exports = (io, client) => {
-  const userID = String(client.user?.id ?? "");
-  const roomID = String(client.handshake.query?.roomID ?? "");
+function getRoomMembers(io, roomID) {
+  const room = io.sockets.adapter.rooms.get(roomID);
+  if (!room) return [];
+  return Array.from(room)
+    .map((id, index) => {
+      const socket = io.sockets.sockets.get(id);
+      return {
+        userName: socket?.user?.userName ?? null,
+        isAdmin: index === 0,
+      };
+    })
+    .filter(member => member.userName !== null);
+}
 
-  if (!roomID) return;
+function emitRoomMembers(io, roomID) {
+  const members = getRoomMembers(io, roomID);
+  io.to(roomID).emit("room-members", { members });
+}
 
-  // const room = io.sockets.adapter.rooms.get(roomID);
-  // فحص إذا المستخدم موجود مسبقًا في الغرفة (لمنع التكرار)
-  // if (room) {
-  //   for (const socketId of room) {
-  //     const socket = io.sockets.sockets.get(socketId);
-  //     if (socket?.user?.id === client.user?.id) {
-  //       // المستخدم موجود مسبقًا، نرسل رسالة رفض ونوقف التنفيذ
-  //       return client.emit("already-in-room", {
-  //         status: 409,
-  //         message: `User ${userID} is already in room ${roomID}.`,
-  //       });
-  //     }
-  //   }
-  // }
+function joinRoom(io, client, roomID) {
+  const room = io.sockets.adapter.rooms.get(roomID);
+  const roomSize = room?.size ?? 0;
 
-  // فحص عدد الأعضاء قبل الانضمام
-  if ((io.sockets.adapter.rooms.get(roomID)?.size ?? 0) >= 2)
-    return client.emit("room-full", {
+  if (room) {
+    for (const socketId of room) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket?.user?.id === client.user?.id) {
+        client.emit("already-in-room", {
+          status: 409,
+          message: `User ${client.user.id} is already in room ${roomID}.`,
+        });
+        return false;
+      }
+    }
+  }
+
+  if (roomSize >= 2) {
+    client.emit("room-full", {
       status: 403,
       message: `Room ${roomID} is full.`,
     });
-  
+    return false;
+  }
 
-  // إذا الغرفة فيها مكان، انضم
   client.join(roomID);
-  client.emit("joined-room", {
-    status: 200,
-    userId: userID,
-    message: `You have joined ${roomID} successfully.`,
-  });
-  client
-    .to(roomID)
-    .emit("user-joined", { message: `User ${userID} joined the room.` });
+  emitRoomMembers(io, roomID);
+  return true;
+}
 
-  // SATRT THE GAME
-  if (
-    (io.sockets.adapter.rooms.get(roomID)?.size ?? 0) === 2 &&
-    !roomQuizCache.has(roomID)
-  ) {
+function handleDisconnect(io, client, roomID) {
+  client.to(roomID).emit("user-left", { userID: client.user?.id });
+  const currentRoom = io.sockets.adapter.rooms.get(roomID);
+  if (!currentRoom || currentRoom.size === 0) {
+    roomCache.delete(roomID);
+  } else {
+    emitRoomMembers(io, roomID);
+  }
+}
+
+module.exports = (io, client) => {
+  const roomID = client.handshake.query?.roomID ? String(client.handshake.query.roomID) : null;
+
+  if (!roomID) {
+    client.emit("error", { message: "RoomID is required" });
+    client.disconnect(true);
+    return;
+  }
+
+  const joined = joinRoom(io, client, roomID);
+  if (!joined) return;
+
+  // تشغيل اللعبة إذا وصل عدد اللاعبين 2 ولم تبدأ بعد
+  const roomSize = io.sockets.adapter.rooms.get(roomID)?.size ?? 0;
+  if (roomSize === 2 && !roomCache.has(roomID)) {
     startQuiz(io, roomID);
   }
 
-  client.on("disconnect", () => {
-    client.to(roomID).emit("user-left", {
-      userID,
-      message: `User ${userID} has left the room.`,
-    });
-    const size = io.sockets.adapter.rooms.get(roomID)?.size || 0;
-    if (size === 0) roomQuizCache.delete(roomID);
-  });
+  client.on("disconnect", () => handleDisconnect(io, client, roomID));
 };
-
-
-
-// async function fetchQuestions() {  
-//   return [
-//     { id: 1, q: "What is 2 + 2?", choices: ["3", "4", "5"], answer: 1 },
-//     {
-//       id: 2,
-//       q: "Capital of France?",
-//       choices: ["Berlin", "Paris", "Rome"],
-//       answer: 1,
-//     },
-//   ];
-// }
